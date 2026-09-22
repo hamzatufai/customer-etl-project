@@ -1,0 +1,55 @@
+version: 2
+
+sources:
+  - name: raw_data
+    database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
+    schema: "{{ env_var('SNOWFLAKE_RAW_SCHEMA', 'RAW') }}"
+    loader: "s3_stage"
+    tables:
+      - name: raw_customers
+        description: "Raw customer data loaded from S3"
+        config:
+          loaded_at_field: "_loaded_at"
+          freshness:
+            warn_after: {count: 12, period: hour}
+            error_after: {count: 24, period: hour}
+        columns:
+          - name: customer_key
+            description: "Unique customer identifier"
+            data_type: INTEGER
+          - name: prefix
+            description: "Customer name prefix (MR., MRS., MS.)"
+            data_type: VARCHAR
+          - name: first_name
+            description: "Customer first name"
+            data_type: VARCHAR
+          - name: last_name
+            description: "Customer last name"
+            data_type: VARCHAR
+          - name: birth_date
+            description: "Customer date of birth"
+            data_type: DATE
+          - name: marital_status
+            description: "Marital status (M=Married, S=Single)"
+            data_type: VARCHAR
+          - name: gender
+            description: "Customer gender (M/F)"
+            data_type: VARCHAR
+          - name: email_address
+            description: "Customer email address"
+            data_type: VARCHAR
+          - name: annual_income
+            description: "Customer annual income"
+            data_type: VARCHAR
+          - name: total_children
+            description: "Number of children"
+            data_type: INTEGER
+          - name: education_level
+            description: "Education level"
+            data_type: VARCHAR
+          - name: occupation
+            description: "Customer occupation"
+            data_type: VARCHAR
+          - name: home_owner
+            description: "Home ownership flag (Y/N)"
+            data_type: VARCHAR

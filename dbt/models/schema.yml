@@ -1,0 +1,58 @@
+version: 2
+
+models:
+  - name: stg_customers
+    description: "Staging model for customer data with basic cleaning and standardization"
+    columns:
+      - name: customer_id
+        description: "Unique customer identifier"
+        tests:
+          - unique
+          - not_null
+      - name: email_address
+        description: "Customer email address"
+        tests:
+          - unique
+          - not_null
+      - name: first_name
+        description: "Customer first name"
+        tests:
+          - not_null
+      - name: last_name
+        description: "Customer last name"
+        tests:
+          - not_null
+
+  - name: int_customer_enriched
+    description: "Intermediate model with calculated fields like age, income bracket"
+    columns:
+      - name: customer_id
+        description: "Unique customer identifier"
+        tests:
+          - unique
+          - not_null
+      - name: age
+        description: "Calculated customer age"
+        tests:
+          - not_null
+      - name: income_bracket
+        description: "Income classification"
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Low Income', 'Middle Income', 'Upper Middle Income', 'High Income']
+
+  - name: dim_customers
+    description: "Final customer dimension table for analytics"
+    columns:
+      - name: customer_id
+        description: "Unique customer identifier"
+        tests:
+          - unique
+          - not_null
+      - name: customer_segment
+        description: "Customer segmentation based on homeownership and family"
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Family Homeowner', 'Individual Homeowner', 'Family Renter', 'Individual Renter']

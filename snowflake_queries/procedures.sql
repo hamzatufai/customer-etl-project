@@ -1,0 +1,163 @@
+USE ROLE SYSADMIN;
+USE DATABASE ETL_PROJECT_DB;
+USE WAREHOUSE ETL_WH;
+
+CREATE OR REPLACE PROCEDURE ETL_PROJECT_DB.STAGING.PROCESS_CUSTOMERS()
+RETURNS STRING
+LANGUAGE SQL
+EXECUTE AS CALLER
+AS
+$$
+BEGIN
+    INSERT INTO ETL_PROJECT_DB.STAGING.STG_CUSTOMER
+    (
+        CUSTOMER_KEY,
+        PREFIX,
+        FIRST_NAME,
+        LAST_NAME,
+        BIRTH_DATE,
+        MARITAL_STATUS,
+        GENDER,
+        EMAIL_ADDRESS,
+        ANNUAL_INCOME,
+        TOTAL_CHILDREN,
+        EDUCATION_LEVEL,
+        OCCUPATION,
+        HOME_OWNER
+    )
+    SELECT
+        CUSTOMER_KEY,
+        PREFIX,
+        FIRST_NAME,
+        LAST_NAME,
+        BIRTH_DATE,
+        MARITAL_STATUS,
+        GENDER,
+        EMAIL_ADDRESS,
+        TRY_TO_DECIMAL(
+            REPLACE(
+                REPLACE(
+                    TRIM(ANNUAL_INCOME),
+                    '$',
+                    ''
+                ),
+                ',',
+                ''
+            ),
+            12,
+            2
+        ) AS ANNUAL_INCOME,
+        TOTAL_CHILDREN,
+        EDUCATION_LEVEL,
+        OCCUPATION,
+        HOME_OWNER
+    FROM ETL_PROJECT_DB.RAW.RAW_CUSTOMERS_STREAM;
+
+    MERGE INTO ETL_PROJECT_DB.MART.DIM_CUSTOMERS AS TARGET
+    USING
+    (
+        SELECT
+            CUSTOMER_KEY,
+            PREFIX,
+            FIRST_NAME,
+            LAST_NAME,
+            BIRTH_DATE,
+            MARITAL_STATUS,
+            GENDER,
+            CASE
+                WHEN UPPER(TRIM(GENDER)) = 'M' THEN 'Male'
+                WHEN UPPER(TRIM(GENDER)) = 'F' THEN 'Female'
+                ELSE 'Unknown'
+            END AS GENDER_DESC,
+            EMAIL_ADDRESS,
+            ANNUAL_INCOME,
+            TOTAL_CHILDREN,
+            EDUCATION_LEVEL,
+            OCCUPATION,
+            HOME_OWNER,
+            CASE
+                WHEN ANNUAL_INCOME < 30000 THEN 'Low Income'
+                WHEN ANNUAL_INCOME BETWEEN 30000 AND 60000 THEN 'Middle Income'
+                WHEN ANNUAL_INCOME BETWEEN 60001 AND 100000 THEN 'Upper Middle Income'
+                WHEN ANNUAL_INCOME > 100000 THEN 'High Income'
+                ELSE 'Unknown'
+            END AS CUSTOMER_SEGMENT
+        FROM ETL_PROJECT_DB.STAGING.STG_CUSTOMER
+    ) AS SOURCE
+    ON TARGET.CUSTOMER_KEY = SOURCE.CUSTOMER_KEY
+
+    WHEN MATCHED THEN
+        UPDATE SET
+            TARGET.PREFIX = SOURCE.PREFIX,
+            TARGET.FIRST_NAME = SOURCE.FIRST_NAME,
+            TARGET.LAST_NAME = SOURCE.LAST_NAME,
+            TARGET.BIRTH_DATE = SOURCE.BIRTH_DATE,
+            TARGET.MARITAL_STATUS = SOURCE.MARITAL_STATUS,
+            TARGET.GENDER = SOURCE.GENDER,
+            TARGET.GENDER_DESC = SOURCE.GENDER_DESC,
+            TARGET.EMAIL_ADDRESS = SOURCE.EMAIL_ADDRESS,
+            TARGET.ANNUAL_INCOME = SOURCE.ANNUAL_INCOME,
+            TARGET.TOTAL_CHILDREN = SOURCE.TOTAL_CHILDREN,
+            TARGET.EDUCATION_LEVEL = SOURCE.EDUCATION_LEVEL,
+            TARGET.OCCUPATION = SOURCE.OCCUPATION,
+            TARGET.HOME_OWNER = SOURCE.HOME_OWNER,
+            TARGET.CUSTOMER_SEGMENT = SOURCE.CUSTOMER_SEGMENT,
+            TARGET._MART_LOADED_AT = CURRENT_TIMESTAMP()
+
+    WHEN NOT MATCHED THEN
+        INSERT
+        (
+            CUSTOMER_KEY,
+            PREFIX,
+            FIRST_NAME,
+            LAST_NAME,
+            BIRTH_DATE,
+            MARITAL_STATUS,
+            GENDER,
+            GENDER_DESC,
+            EMAIL_ADDRESS,
+            ANNUAL_INCOME,
+            TOTAL_CHILDREN,
+            EDUCATION_LEVEL,
+            OCCUPATION,
+            HOME_OWNER,
+            CUSTOMER_SEGMENT,
+            _MART_LOADED_AT
+        )
+        VALUES
+        (
+            SOURCE.CUSTOMER_KEY,
+            SOURCE.PREFIX,
+            SOURCE.FIRST_NAME,
+            SOURCE.LAST_NAME,
+            SOURCE.BIRTH_DATE,
+            SOURCE.MARITAL_STATUS,
+            SOURCE.GENDER,
+            SOURCE.GENDER_DESC,
+            SOURCE.EMAIL_ADDRESS,
+            SOURCE.ANNUAL_INCOME,
+            SOURCE.TOTAL_CHILDREN,
+            SOURCE.EDUCATION_LEVEL,
+            SOURCE.OCCUPATION,
+            SOURCE.HOME_OWNER,
+            SOURCE.CUSTOMER_SEGMENT,
+            CURRENT_TIMESTAMP()
+        );
+
+    RETURN 'RAW -> STAGING -> MART processing completed successfully';
+
+EXCEPTION
+    WHEN OTHER THEN
+        RETURN 'ERROR: ' || SQLERRM;
+END;
+$$;
+
+CREATE OR REPLACE TASK ETL_PROJECT_DB.STAGING.PROCESS_CUSTOMERS_TASK
+    WAREHOUSE = ETL_WH
+    WHEN SYSTEM$STREAM_HAS_DATA(
+        'ETL_PROJECT_DB.RAW.RAW_CUSTOMERS_STREAM'
+    )
+AS
+    CALL ETL_PROJECT_DB.STAGING.PROCESS_CUSTOMERS();
+
+ALTER TASK ETL_PROJECT_DB.STAGING.PROCESS_CUSTOMERS_TASK RESUME;
